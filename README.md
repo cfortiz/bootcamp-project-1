@@ -1,2 +1,2 @@
-# bc-project-1
+# bootcamp-project-1
 BootCamp Project 1
