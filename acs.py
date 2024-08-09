@@ -7,11 +7,6 @@ from pathlib import Path
 from censuscodes import county_lookup, County
 from config import census_api_key
 
-from typing import Iterable
-
-
-# Directory for project resources
-output_dir = "resources"
 
 # ACS 1-year profile variables
 ACS_TOTAL_HOUSING_UNITS = "DP04_0001E"  # HOUSING OCCUPANCY!!Total housing units
@@ -27,7 +22,7 @@ session = requests.Session()
 
 
 def get_vacancy_rate(year: int, county: str|County) -> pd.DataFrame:
-    """Get the vacancy rates for a year and county from the ACS 1 yr profile."""
+    """Get the vacancy rate for a year and county from the Census API."""
     acs_1y_url = f"https://api.census.gov/data/{year}/acs/acs1/profile"
     dec_url = f"https://api.census.gov/data/{year}/dec/pl"
 
@@ -100,7 +95,8 @@ def get_vacancy_rate(year: int, county: str|County) -> pd.DataFrame:
     return df
 
 
-def get_acs_vacancy_rate_variables(years):
+def get_acs1_profile_variables(years):
+    """Get the variables for the ACS 1-year profile for the given years."""
     for year in years:
         path = f'/{year}/acs/acs1/profile/variables.json'
         url = f'{base_url}{path}'
@@ -109,17 +105,16 @@ def get_acs_vacancy_rate_variables(years):
             variables = response.json()['variables']
             for variable, attributes in variables.items():
                 label = attributes['label'].lower()
-                if label.endswith('vacancy rate') and (
-                        label.endswith('homeowner vacancy rate') 
-                        or label.endswith('rental vacancy rate')):
-                    print(f'{year=}, {variable=!r}, {label=!r}')
+                concept = attributes['concept'].lower()
+                print(f'{year=}, {variable=!r}, {label=!r}')
         except Exception as e:
             print(f"Error: {e}")
             print(f"Failed to get variables for year {year}")
             continue
 
 
-def get_dec_pl_vacancy_rate_variables(years):
+def get_dec_pl_variables(years):
+    """Get the variables for the Decennial census for the given years."""
     for year in years:
         path = f'/{year}/dec/pl/variables.json'
         url = f'{base_url}{path}'
@@ -128,13 +123,9 @@ def get_dec_pl_vacancy_rate_variables(years):
             variables = response.json()['variables']
             for variable, attributes in variables.items():
                 label = attributes['label'].lower()
-                if label.endswith('vacancy rate'): # and (
-                        #label.endswith('homeowner vacancy rate') 
-                        #or label.endswith('rental vacancy rate')):
-                    print(f'{year=}, {variable=!r}, {label=!r}')
+                concept = attributes['concept'].lower()
+                print(f'{year=}, {variable=!r}, {concept=!r}, {label=!r}')
         except Exception as e:
             print(f"Error: {e}")
             print(f"Failed to get variables for year {year}")
             continue
-
-
