@@ -4,7 +4,7 @@ import pandas as pd
 import requests
 from pathlib import Path
 
-from censuscodes import county_lookup, County
+from censuscodes import county_lookup, County, state_lookup
 from config import census_api_key
 
 
@@ -36,8 +36,8 @@ def get_vacancy_rate(year: int, county: str|County) -> pd.DataFrame:
     
     # Define the variables and parameters for the request.
     vars = {
-        'total': ACS_TOTAL_HOUSING_UNITS,
-        'vacant': ACS_VACANT_HOUSING_UNITS,
+        'total_units': ACS_TOTAL_HOUSING_UNITS,
+        'vacant_units': ACS_VACANT_HOUSING_UNITS,
     }
     
     # Use the decennial variables for 2020.  The ACS survery had issues in 2020
@@ -45,8 +45,8 @@ def get_vacancy_rate(year: int, county: str|County) -> pd.DataFrame:
     # for 2020, so we use that instead.
     if year == 2020:
         vars = {
-            'total': DEC_TOTAL_UNITS,
-            'vacant': DEC_VACANT_UNITS,
+            'total_units': DEC_TOTAL_UNITS,
+            'vacant_units': DEC_VACANT_UNITS,
         }
     params = {
         'get': ",".join(vars.values()),
@@ -73,8 +73,8 @@ def get_vacancy_rate(year: int, county: str|County) -> pd.DataFrame:
     response = session.send(request)
     
     # Handle error conditions when making thr request.
-    if not response.ok:
-        raise RuntimeError(f"Error: {response.status_code=}.  "
+    if not response.status_code == 200:
+        raise RuntimeError(f"{response.status_code=}, {response.reason=}.  "
                            f"Failed to get data: {response.text}")
     
     # Parse the response as JSON, convert it to a DataFrame.
@@ -88,8 +88,14 @@ def get_vacancy_rate(year: int, county: str|County) -> pd.DataFrame:
     for var in vars.values():
         df[var] = df[var].astype(int)
     
+    # Rename the columns to more descriptive names.
+    renames = {v: k for k, v in vars.items()}
+    renames['state'] = 'state_fips'
+    renames['county'] = 'county_fips'
+    df = df.rename(columns=renames)
+    
     # Compute the vacancy rate as a percentage.
-    df['vacancy_rate'] = df[vars['vacant']] * 100.0 / df[vars['total']]
+    df['vacancy_rate'] = df['vacant_units'] * 100.0 / df['total_units']
     
     # Return the DataFrame with the vacancy rate.
     return df
