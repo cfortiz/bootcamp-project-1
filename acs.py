@@ -14,17 +14,22 @@ from typing import Iterable
 output_dir = "resources"
 
 # ACS 1-year profile variables
-HOMEOWNER_VACANCY_RATE = "DP04_0004E"
-RENTAL_VACANCY_RATE = "DP04_0005E"
+ACS_TOTAL_HOUSING_UNITS = "DP04_0001E"  # HOUSING OCCUPANCY!!Total housing units
+ACS_VACANT_HOUSING_UNITS = "DP04_0003E"  # HOUSING OCCUPANCY!!Total housing units!!Vacant units
+
+# 2020 Decennial variables
+DEC_TOTAL_UNITS = "H1_001N"  # OCCUPANCY STATUS!!Total:
+DEC_VACANT_UNITS = "H1_003N"  # OCCUPANCY STATUS!!Total:!!Vacant
 
 # Create a session to reuse connections, and allow us to inspect the requests
 # before they are sent, including generated URLs for GET requests.
 session = requests.Session()
 
 
-def get_acs_1y_vacancy_rates(year: int, county: str|County) -> pd.DataFrame:
+def get_vacancy_rate(year: int, county: str|County) -> pd.DataFrame:
     """Get the vacancy rates for a year and county from the ACS 1 yr profile."""
     acs_1y_url = f"https://api.census.gov/data/{year}/acs/acs1/profile"
+    dec_url = f"https://api.census.gov/data/{year}/dec/pl"
 
     # Accept a string with the full name of the county, or a County object.
     if isinstance(county, str):
@@ -35,33 +40,101 @@ def get_acs_1y_vacancy_rates(year: int, county: str|County) -> pd.DataFrame:
     assert isinstance(county, County), "county must be a County object"
     
     # Define the variables and parameters for the request.
-    variables = [
-        HOMEOWNER_VACANCY_RATE,
-        RENTAL_VACANCY_RATE,
-    ]
+    vars = {
+        'total': ACS_TOTAL_HOUSING_UNITS,
+        'vacant': ACS_VACANT_HOUSING_UNITS,
+    }
+    
+    # Use the decennial variables for 2020.  The ACS survery had issues in 2020
+    # because of the pandemic.  The decennial survey has housing occupancy data
+    # for 2020, so we use that instead.
+    if year == 2020:
+        vars = {
+            'total': DEC_TOTAL_UNITS,
+            'vacant': DEC_VACANT_UNITS,
+        }
     params = {
-        'get': ",".join(variables),
+        'get': ",".join(vars.values()),
         'for': f"county:{county.fips}",
         'in': f"state:{county.state_fips}",
         'key': census_api_key,
     }
 
     # Prepare the request and get the URL for inspection.
-    request = requests.Request('GET', acs_1y_url, params=params).prepare()
+    if year == 2020:
+        endpoint = dec_url
+    else:
+        endpoint = acs_1y_url
+    request = requests.Request('GET', endpoint, params=params).prepare()
     url = request.url
-    url = url.replace(census_api_key, "API_KEY_REDACTED")  # Redact the API key
+
+    # Redact the API key for security before printing the URL.
+    url = url.replace(census_api_key, "API_KEY_REDACTED")
     
     # Print the URL for inspection.  Also helps keep track of download progress.
-    print(f"GET: {url}")
+    print(f"Year: {year}, County: {county.full_name}, GET: {url}")
     
     # Send the request and get the response.
     response = session.send(request)
     
     # Handle error conditions when making thr request.
     if not response.ok:
-        raise RuntimeError(f"Failed to get data: {response.text}")
+        raise RuntimeError(f"Error: {response.status_code=}.  "
+                           f"Failed to get data: {response.text}")
     
-    # Parse the response as JSON, convert it to a DataFrame, and return it.
+    # Parse the response as JSON, convert it to a DataFrame.
     data = response.json()
     df = pd.DataFrame(data[1:], columns=data[0])
+    
+    # Year isn't part of the data; add it to the DataFrame.
+    df['year'] = year
+    
+    # Cast total and vacant columns to integers.
+    for var in vars.values():
+        df[var] = df[var].astype(int)
+    
+    # Compute the vacancy rate as a percentage.
+    df['vacancy_rate'] = df[vars['vacant']] * 100.0 / df[vars['total']]
+    
+    # Return the DataFrame with the vacancy rate.
     return df
+
+
+def get_acs_vacancy_rate_variables(years):
+    for year in years:
+        path = f'/{year}/acs/acs1/profile/variables.json'
+        url = f'{base_url}{path}'
+        try:
+            response = requests.get(url)
+            variables = response.json()['variables']
+            for variable, attributes in variables.items():
+                label = attributes['label'].lower()
+                if label.endswith('vacancy rate') and (
+                        label.endswith('homeowner vacancy rate') 
+                        or label.endswith('rental vacancy rate')):
+                    print(f'{year=}, {variable=!r}, {label=!r}')
+        except Exception as e:
+            print(f"Error: {e}")
+            print(f"Failed to get variables for year {year}")
+            continue
+
+
+def get_dec_pl_vacancy_rate_variables(years):
+    for year in years:
+        path = f'/{year}/dec/pl/variables.json'
+        url = f'{base_url}{path}'
+        try:
+            response = requests.get(url)
+            variables = response.json()['variables']
+            for variable, attributes in variables.items():
+                label = attributes['label'].lower()
+                if label.endswith('vacancy rate'): # and (
+                        #label.endswith('homeowner vacancy rate') 
+                        #or label.endswith('rental vacancy rate')):
+                    print(f'{year=}, {variable=!r}, {label=!r}')
+        except Exception as e:
+            print(f"Error: {e}")
+            print(f"Failed to get variables for year {year}")
+            continue
+
+
