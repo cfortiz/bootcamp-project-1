@@ -12,8 +12,8 @@ estate (units available, units in region, unit price average/median, etc.)
 
 ## Team
 
-The team has chosen team name Houseketeers, and is composed of (in alphabetical
-order by surname):
+Team #3 has chosen team name **Houseketeers**, and is composed of (in
+alphabetical order by surname):
 
 * Elif Celebi
 * Zaineb Konialian
