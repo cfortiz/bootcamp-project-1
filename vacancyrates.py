@@ -4,118 +4,64 @@ import pandas as pd
 import requests
 from pathlib import Path
 
-from censuscodes import *
+from censuscodes import county_lookup, County
 from config import census_api_key
 
+from typing import Iterable
+
+
 # Directory for project resources
-resources_dir = "resources"
+output_dir = "resources"
 
-# All counties for the project
-project_counties = list(map(county_lookup.by.full_name.get, [
-    # Counties for NYC boroughs
-    "Bronx County, New York",
-    "Kings County, New York",  # Brooklyn
-    "New York County, New York",  # Manhattan
-    "Queens County, New York",
-    "Richmond County, New York",  # Staten Island
-    
-    # Counties adjacent to NYC boroughs
-    "Westchester County, New York",
-    "Rockland County, New York",
-    "Nassau County, New York",
-    "Bergen County, New Jersey",
-    "Essex County, New Jersey",
-    "Hudson County, New Jersey",
-    "Middlesex County, New Jersey",
-    "Union County, New Jersey",
-    "Fairfield County, Connecticut",
-]))
+# ACS 1-year profile variables
+HOMEOWNER_VACANCY_RATE = "DP04_0004E"
+RENTAL_VACANCY_RATE = "DP04_0005E"
 
-# Range of years for the project
-project_year_ranges = list(range(2012, 2023))  # 2012-2022: `range` is half-open
-
-
+# Create a session to reuse connections, and allow us to inspect the requests
+# before they are sent, including generated URLs for GET requests.
 session = requests.Session()
 
 
-def get_1y_dp04(year: int, county: County):
+def get_acs_1y_vacancy_rates(year: int, county: str|County) -> pd.DataFrame:
+    """Get the vacancy rates for a year and county from the ACS 1 yr profile."""
     acs_1y_url = f"https://api.census.gov/data/{year}/acs/acs1/profile"
 
-    group = "DP04"
+    # Accept a string with the full name of the county, or a County object.
+    if isinstance(county, str):
+        # Look up the county by its full name.
+        county = county_lookup.by.full_name(county)
     
-    # assert county in project_counties, f"County not in project: {county.full_name}"
+    # Make sure that the county is a County object before proceeding.
+    assert isinstance(county, County), "county must be a County object"
     
-    params = {
-        'get': f"group({group})",
-        'for': f"county:{county.fips:03d}",
-        'in': f"state:{county.state_fips:02d}",
-        'key': census_api_key,
-    }
-
-    request = requests.Request('GET', acs_1y_url, params=params).prepare()
-    url = request.url.replace(census_api_key, "API_KEY_REDACTED")
-    # print(f"GET: {url}")
-    response = session.send(request)
-    
-    if not response.ok:
-        raise RuntimeError(f"Failed to get data: {response.text}")
-    # data = json.loads(response.text)
-    # print(f"RESPONSE: {response.status_code=}, {response.reason=}")
-    # print(f"TEXT: {response.text}")
-    data = response.json()
-    return data
-
-
-def get_1y_vacancy_rates(year: int, county: County):
-    acs_1y_url = f"https://api.census.gov/data/{year}/acs/acs1/profile"
-
-    homeowner_vacancy_rate_variable = "DP04_0004E"
-    rental_vacancy_rate_variable = "DP04_0005E"
-
-    variables = [homeowner_vacancy_rate_variable, rental_vacancy_rate_variable]
-    
-    # assert county in project_counties, f"County not in project: {county.full_name}"
-    
+    # Define the variables and parameters for the request.
+    variables = [
+        HOMEOWNER_VACANCY_RATE,
+        RENTAL_VACANCY_RATE,
+    ]
     params = {
         'get': ",".join(variables),
-        'for': f"county:{county.fips:03d}",
-        'in': f"state:{county.state_fips:02d}",
+        'for': f"county:{county.fips}",
+        'in': f"state:{county.state_fips}",
         'key': census_api_key,
     }
 
+    # Prepare the request and get the URL for inspection.
     request = requests.Request('GET', acs_1y_url, params=params).prepare()
-    url = request.url.replace(census_api_key, "API_KEY_REDACTED")
+    url = request.url
+    url = url.replace(census_api_key, "API_KEY_REDACTED")  # Redact the API key
+    
+    # Print the URL for inspection.  Also helps keep track of download progress.
     print(f"GET: {url}")
+    
+    # Send the request and get the response.
     response = session.send(request)
     
+    # Handle error conditions when making thr request.
     if not response.ok:
         raise RuntimeError(f"Failed to get data: {response.text}")
-    # data = json.loads(response.text)
-    # print(f"RESPONSE: {response.status_code=}, {response.reason=}")
-    # print("START TEXT")
-    # print(response.text)
-    # print("END TEXT")
+    
+    # Parse the response as JSON, convert it to a DataFrame, and return it.
     data = response.json()
     df = pd.DataFrame(data[1:], columns=data[0])
     return df
-
-
-if __name__ == '__main__':
-    dfs = []
-    # print("START API CALLS")
-    for year in project_year_ranges:
-        for county in project_counties:
-            # print(f"START API CALL: {year=}, {county.full_name=}")
-            df = get_1y_vacancy_rates(year, county)
-            # print("START DATA FRAME HEAD")
-            # print(df.head())
-            # print("END DATA FRAME HEAD")
-            # print(f"END API CALL: {year=}, {county.full_name=}")
-            dfs.append(df)
-    # print("END API CALLS")
-    merged_df = pd.concat(dfs).reset_index(drop=True)
-    merged_df.to_csv("merged_df.csv")
-    # print("START MERGED DATA FRAME")
-    for index, row in merged_df.iterrows():
-        print(row)
-    # print("END MERGED DATA FRAME")

@@ -55,7 +55,7 @@ def _get_state_codes():
     path = "resources/national_state2020.txt"
     url = "https://www2.census.gov/geo/docs/reference/codes2020/national_state2020.txt"
     
-    df = pd.read_csv(downloaded(path, url), sep='|')    
+    df = pd.read_csv(downloaded(path, url), dtype=str, sep='|')    
     df = df.rename(columns={  # rename columns to snake_case
         # Columns: STATE STATEFP STATENS STATE_NAME
         'STATE': 'state',
@@ -71,7 +71,7 @@ def _get_county_codes():
     path = "resources/national_county2020.txt"
     url = "https://www2.census.gov/geo/docs/reference/codes2020/national_county2020.txt"
     
-    df = pd.read_csv(downloaded(path, url), sep='|')
+    df = pd.read_csv(downloaded(path, url), dtype=str, sep='|')
     df = df.rename(columns={  # rename columns to snake_case
         # Columns: STATE STATEFP COUNTYFP COUNTYNS COUNTYNAME CLASSFP FUNCSTAT
         'STATE': 'state',
